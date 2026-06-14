@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Биопаспорт</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
+<style>
+  :root{
+    --ink:#0B1411;        /* фон приложения */
+    --ink2:#13231C;       /* приподнятые поверхности */
+    --cover:#143226;      /* «обложка» документа */
+    --green:#1B5E43;      /* гербовая зелень / печать */
+    --gold:#C9A227;       /* гербовое золото */
+    --gold-soft:#E3C766;
+    --paper:#F0EADB;      /* бумага страницы паспорта */
+    --paper-ink:#23332B;  /* текст на бумаге */
+    --paper-mut:#6E7E72;  /* вторичный текст на бумаге */
+    --text:#E9E4D6;       /* текст на тёмном */
+    --muted:#8FA597;
+    --mono:'Courier New', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    background:var(--ink);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    display:flex;justify-content:center;
+  }
+  #app{width:100%;max-width:430px;min-height:100dvh;display:flex;flex-direction:column;position:relative;overflow:hidden}
+
+  /* ---------- общие ---------- */
+  .screen{flex:1;display:flex;flex-direction:column;padding:24px 22px calc(24px + env(safe-area-inset-bottom));animation:fade .35s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .label{font-family:var(--mono);font-size:10px;letter-spacing:.22em;color:var(--muted);text-transform:uppercase}
+  .btn{
+    display:block;width:100%;border:none;cursor:pointer;text-align:center;
+    background:var(--gold);color:#1C1607;font-weight:700;font-size:16px;
+    padding:16px;border-radius:12px;letter-spacing:.02em;
+    transition:transform .12s ease,opacity .2s;
+  }
+  .btn:active{transform:scale(.98)}
+  .btn.ghost{background:transparent;color:var(--text);border:1px solid #2B3D34;font-weight:500}
+  .btn.ghost:active{background:var(--ink2)}
+  .btn+.btn{margin-top:10px}
+
+  /* ---------- приветствие ---------- */
+  .hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:0}
+  .emblem{
+    width:108px;height:108px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:46px;border:1.5px solid var(--gold);position:relative;margin-bottom:26px;
+  }
+  .emblem::before{content:"";position:absolute;inset:6px;border-radius:50%;border:1px dashed rgba(201,162,39,.5)}
+  h1.title{font-size:34px;letter-spacing:.14em;font-weight:800;color:var(--text)}
+  .title-sub{font-family:var(--mono);font-size:11px;letter-spacing:.32em;color:var(--gold);margin-top:6px}
+  .lede{margin-top:18px;font-size:15.5px;line-height:1.55;color:var(--muted);max-width:300px}
+  .fineprint{margin-top:14px;font-size:11.5px;color:#5C6E63}
+
+  /* ---------- вопросы ---------- */
+  .topbar{display:flex;align-items:center;gap:14px;margin-bottom:6px;min-height:32px}
+  .back{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;padding:2px 8px 2px 0;line-height:1}
+  .progress-track{flex:1;height:2px;background:#243730;border-radius:2px;overflow:hidden}
+  .progress-fill{height:100%;background:var(--gold);width:0;transition:width .35s ease}
+  .step-num{font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.1em}
+  .q-emoji{font-size:40px;margin:26px 0 10px}
+  h2.q{font-size:24px;font-weight:700;line-height:1.25}
+  .q-hint{margin-top:6px;font-size:13.5px;color:var(--muted)}
+  .chips{margin-top:26px;display:flex;flex-direction:column;gap:10px}
+  .chip{
+    display:flex;align-items:center;gap:12px;width:100%;text-align:left;cursor:pointer;
+    background:var(--ink2);border:1px solid #283A31;color:var(--text);
+    padding:15px 16px;border-radius:14px;font-size:16px;font-weight:500;
+    transition:border-color .15s,background .15s,transform .12s;
+  }
+  .chip:active{transform:scale(.985)}
+  .chip .dot{width:14px;height:14px;border-radius:50%;flex:none;border:1px solid rgba(255,255,255,.25)}
+  .chip .freq{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:#5C6E63;letter-spacing:.05em}
+  .chip.sel{border-color:var(--gold);background:#1A2A21}
+  .chip.sel .freq{color:var(--gold)}
+
+  /* ---------- оформление (терминал) ---------- */
+  .issuing{flex:1;display:flex;flex-direction:column;justify-content:center;font-family:var(--mono)}
+  .issuing .label{margin-bottom:18px}
+  .tline{font-size:13px;color:var(--muted);padding:5px 0;opacity:0;animation:fade .3s ease forwards}
+  .tline b{color:var(--gold);font-weight:400}
+
+  /* ---------- паспорт ---------- */
+  .passport-wrap{margin-top:8px}
+  .card{
+    border-radius:16px;overflow:hidden;position:relative;
+    box-shadow:0 18px 50px rgba(0,0,0,.55);
+    animation:issue .55s cubic-bezier(.2,.9,.3,1.1);
+  }
+  @keyframes issue{from{opacity:0;transform:translateY(26px) scale(.96)}to{opacity:1;transform:none}}
+  .card-cover{
+    background:linear-gradient(160deg,var(--cover),#0E251B);
+    padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px;
+    border-bottom:2px solid var(--gold);
+  }
+  .card-cover .l{display:flex;align-items:center;gap:10px}
+  .card-cover .dna{font-size:22px}
+  .card-cover .t1{font-size:14px;font-weight:800;letter-spacing:.18em;color:var(--gold-soft)}
+  .card-cover .t2{font-family:var(--mono);font-size:8.5px;letter-spacing:.26em;color:#7E9A8B;margin-top:2px}
+  .card-cover .num{font-family:var(--mono);font-size:11px;color:var(--gold-soft);letter-spacing:.08em;text-align:right}
+  .card-paper{
+    background:
+      repeating-linear-gradient(45deg, rgba(27,94,67,.05) 0 1px, transparent 1px 7px),
+      repeating-linear-gradient(-45deg, rgba(27,94,67,.05) 0 1px, transparent 1px 7px),
+      radial-gradient(circle at 110% -10%, rgba(201,162,39,.16), transparent 55%),
+      var(--paper);
+    color:var(--paper-ink);
+    padding:18px 18px 14px;position:relative;
+  }
+  .f-label{font-family:var(--mono);font-size:8.5px;letter-spacing:.18em;color:var(--paper-mut);text-transform:uppercase;margin-bottom:3px}
+  .f-row{display:flex;gap:16px;margin-bottom:13px}
+  .f-row>div{min-width:0}
+  .bearer{font-size:17px;font-weight:800;letter-spacing:.06em}
+  .holder-type{font-size:19px;font-weight:800;letter-spacing:.03em;display:flex;align-items:center;gap:8px;padding-right:80px}
+  .rarity{font-size:12.5px;font-weight:700;color:var(--green);padding-right:80px}
+  .rarity small{display:block;font-weight:500;color:var(--paper-mut);margin-top:2px;font-size:11px}
+  .rule{border:none;border-top:1px solid rgba(27,94,67,.3);margin:4px 0 12px}
+  .abilities{display:flex;flex-direction:column;margin-bottom:13px}
+  .ability{border-top:1px solid rgba(27,94,67,.18)}
+  .ability:first-child{border-top:none}
+  .ability-head{
+    width:100%;display:flex;align-items:center;gap:9px;cursor:pointer;
+    background:none;border:none;text-align:left;color:var(--paper-ink);
+    padding:9px 0;font-size:13px;font-weight:700;line-height:1.25;
+  }
+  .ability-head .pe{flex:none;font-size:14px}
+  .ability-name{flex:1;min-width:0}
+  .chev{flex:none;color:var(--green);font-size:17px;line-height:1;transition:transform .28s ease}
+  .ability.open .chev{transform:rotate(90deg)}
+  .ability-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows .28s ease}
+  .ability.open .ability-body{grid-template-rows:1fr}
+  .ability-body .inner{overflow:hidden;min-height:0}
+  .ability-body p{font-size:12.5px;line-height:1.45;color:var(--paper-mut);padding:0 0 10px 23px}
+  .locked{
+    border:1px dashed rgba(27,94,67,.45);border-radius:10px;padding:10px 12px;
+    font-size:12px;color:var(--paper-mut);display:flex;gap:8px;align-items:center;margin-bottom:13px;
+  }
+  .card-foot{display:flex;justify-content:space-between;align-items:flex-end}
+  .mrz{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;line-height:1.5;
+    color:#3A4A40;margin-top:12px;padding-top:9px;border-top:1px solid rgba(27,94,67,.3);
+    white-space:nowrap;overflow:hidden;
+  }
+  .stamp{
+    position:absolute;right:14px;top:86px;transform:rotate(-12deg) scale(1);
+    border:2px solid var(--green);color:var(--green);border-radius:8px;
+    font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-align:center;
+    padding:7px 12px;opacity:.72;pointer-events:none;
+    animation:stamp .4s cubic-bezier(.3,1.6,.5,1) .55s backwards;
+  }
+  @keyframes stamp{from{opacity:0;transform:rotate(-12deg) scale(2.2)}to{opacity:.78;transform:rotate(-12deg) scale(1)}}
+  .actions{margin-top:18px}
+  .again{margin-top:14px;text-align:center}
+  .again button{background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+
+  /* ---------- оверлей оплаты ---------- */
+  .overlay{position:fixed;inset:0;background:rgba(5,10,8,.78);display:flex;align-items:flex-end;justify-content:center;z-index:40;animation:fade .25s}
+  .sheet{width:100%;max-width:430px;background:var(--ink2);border-radius:20px 20px 0 0;padding:24px 22px calc(28px + env(safe-area-inset-bottom));border-top:1px solid #2B3D34}
+  .sheet h3{font-size:20px;margin:4px 0 8px}
+  .sheet p{font-size:14px;color:var(--muted);line-height:1.5;margin-bottom:18px}
+  .price{font-family:var(--mono);color:var(--gold);font-size:14px;letter-spacing:.08em;margin-bottom:14px}
+
+  .toast{
+    position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(8px);
+    background:#22332B;color:var(--text);font-size:13.5px;padding:11px 18px;border-radius:999px;
+    border:1px solid #34493E;opacity:0;pointer-events:none;transition:all .25s;z-index:60;white-space:nowrap;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none!important;transition:none!important}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* =====================================================================
+   БИОПАСПОРТ · прототип v0.1 (Telegram Mini App / standalone)
+   =====================================================================
+   КОНТЕНТ-БАЗА (DB)
+   Это единственное место, которое правит контент-команда.
+   Структура: маркер → варианты → { label, color?, freq, power }
+     freq  — примерная доля в популяции (для расчёта редкости).  TODO: уточнить по источникам
+     power — { name, desc }. Тексты ниже — ЗАГЛУШКИ.              TODO: финальные тексты + источники
+   AI в рантайме не используется: всё матчится из этой базы.
+   ===================================================================== */
+const DB = {
+  order: ["eyes","blood","rh","body","hand","hair"],
+  markers: {
+    eyes: {
+      emoji:"👁", q:"Какой у тебя цвет глаз?", hint:"Натуральный, без линз",
+      options:[
+        {id:"brown", label:"Карий",   color:"#6B4423", freq:.30, power:{name:"Солнечный фильтр",   desc:"Меланин радужки гасит яркий свет. (заглушка)"}},
+        {id:"blue",  label:"Голубой", color:"#7FA8C9", freq:.28, power:{name:"Сумеречное зрение",  desc:"Чувствительнее при низкой освещённости. (заглушка)"}},
+        {id:"gray",  label:"Серый",   color:"#9AA3A8", freq:.22, power:{name:"Хамелеон-режим",     desc:"Оттенок меняется со светом и одеждой. (заглушка)"}},
+        {id:"green", label:"Зелёный", color:"#5E7F4F", freq:.14, power:{name:"Редкий пигмент",     desc:"~2% населения мира. Уже способность. (заглушка)"}},
+        {id:"amber", label:"Янтарный",color:"#B07A2A", freq:.06, power:{name:"Волчий взгляд",      desc:"Высокая концентрация липохрома. (заглушка)"}}
+      ]
+    },
+    blood: {
+      emoji:"🩸", q:"Какая у тебя группа крови?", hint:"Если не знаешь — спроси у мамы 🙂",
+      options:[
+        {id:"o",  label:"O (I)",   freq:.33, power:{name:"Универсальный донор",    desc:"Эритроциты подходят всем группам. (заглушка)"}},
+        {id:"a",  label:"A (II)",  freq:.36, power:{name:"Стайерский метаболизм",  desc:"Заточен под равномерные нагрузки. (заглушка)"}},
+        {id:"b",  label:"B (III)", freq:.23, power:{name:"Кочевой иммунитет",      desc:"Гибкий ответ на смену среды. (заглушка)"}},
+        {id:"ab", label:"AB (IV)", freq:.08, power:{name:"Универсальный реципиент",desc:"Принимает любую группу. (заглушка)"}}
+      ]
+    },
+    rh: {
+      emoji:"🔬", q:"Резус-фактор?", hint:"",
+      options:[
+        {id:"pos", label:"Положительный (Rh+)", freq:.85, power:{name:"Совместимость 85%", desc:"Самый распространённый резус. (заглушка)"}},
+        {id:"neg", label:"Отрицательный (Rh−)", freq:.15, power:{name:"Редкая кровь",      desc:"15% населения, особо ценный донор. (заглушка)"}}
+      ]
+    },
+    body: {
+      emoji:"🏋", q:"Тип телосложения?", hint:"Каким ты был(а) до спортзала и пельменей",
+      options:[
+        {id:"ecto", label:"Эктоморф — худощавый",   freq:.28, power:{name:"Лёгкий каркас",       desc:"Скорость и терморегуляция в жару. (заглушка)"}},
+        {id:"meso", label:"Мезоморф — атлетичный",  freq:.42, power:{name:"Быстрый набор силы",  desc:"Мышечный отклик выше среднего. (заглушка)"}},
+        {id:"endo", label:"Эндоморф — плотный",     freq:.30, power:{name:"Энергорезерв",        desc:"Запас прочности на холод и марафон. (заглушка)"}}
+      ]
+    },
+    hand: {
+      emoji:"✋", q:"Ведущая рука?", hint:"",
+      options:[
+        {id:"right", label:"Правша",     freq:.88, power:{name:"Стандарт-протокол", desc:"Мир спроектирован под тебя. (заглушка)"}},
+        {id:"left",  label:"Левша",      freq:.10, power:{name:"Зеркальный мозг",   desc:"Нестандартные нейромаршруты. ~10%. (заглушка)"}},
+        {id:"ambi",  label:"Амбидекстр", freq:.02, power:{name:"Двурукий режим",    desc:"Обе руки ведущие. ~1%. (заглушка)"}}
+      ]
+    },
+    hair: {
+      emoji:"💇", q:"Натуральный цвет волос?", hint:"Тот, что выдан при рождении",
+      options:[
+        {id:"black",  label:"Чёрный",     color:"#1E1A17", freq:.16, power:{name:"Максимум эумеланина", desc:"УФ-защита выше среднего. (заглушка)"}},
+        {id:"brown",  label:"Каштановый", color:"#5C3A22", freq:.30, power:{name:"Баланс пигментов",    desc:"Универсальная комплектация. (заглушка)"}},
+        {id:"fair",   label:"Русый",      color:"#9C7E52", freq:.30, power:{name:"Северный камуфляж",   desc:"Классика умеренных широт. (заглушка)"}},
+        {id:"blond",  label:"Блонд",      color:"#D8B97A", freq:.16, power:{name:"Световой пигмент",    desc:"Редкий ген за пределами севера. (заглушка)"}},
+        {id:"red",    label:"Рыжий",      color:"#A84E2B", freq:.04, power:{name:"Ген MC1R",            desc:"<2% людей на планете. (заглушка)"}}
+      ]
+    }
+  },
+  /* Тип носителя = прилагательное(глаза) + существительное(кровь), тотем — от телосложения.
+     TODO: контент-команда — отдельная сессия нейминга */
+  typeAdj:  { brown:"Янтарный", blue:"Ледяной", gray:"Стальной", green:"Изумрудный", amber:"Огненный" },
+  typeNoun: { o:"Охотник", a:"Земледелец", b:"Кочевник", ab:"Алхимик" },
+  totem:    { ecto:"🦅", meso:"🐺", endo:"🐻" },
+  rarityTiers: [
+    {max:500,      name:"Классическая"},
+    {max:3000,     name:"Редкая"},
+    {max:20000,    name:"Эпическая"},
+    {max:Infinity, name:"Легендарная"}
+  ],
+  botUrl: "https://t.me/biopassport_bot" // TODO: заменить на реальный @username бота
+};
+
+/* ===================== СОСТОЯНИЕ ===================== */
+const OPEN_FIRST = true; // первая способность раскрыта — подсказывает, что блок разворачивается. Поставь false, чтобы все были свёрнуты
+const STRESS = /[?&#]stress/i.test(location.search + location.hash); // открой index.html?stress — зальёт длинными текстами для проверки вёрстки
+const LONG_DEMO = "Расширенное демо-описание для стресс-теста вёрстки. Меланин радужной оболочки работает как встроенный светофильтр: он рассеивает часть коротковолнового излучения и снижает блики в яркий полдень. У носителей этого маркера обычно выше контрастная чувствительность на солнце, но ниже — в сумерках. Этот абзац намеренно длинный, чтобы проверить переносы строк, межстрочный интервал, поведение «стрелочки» и корректность экспорта карточки в PNG при большом объёме контента.";
+function descOf(p){ return STRESS ? (p.desc + " " + LONG_DEMO) : p.desc; }
+
+
+const state = { step:-1, answers:{} }; // step: -1 welcome, 0..N вопросы, N "issuing", N+1 паспорт
+const $app = document.getElementById("app");
+let tg = null;
+
+/* Telegram WebApp SDK — подгружаем мягко: в обычном браузере просто не загрузится */
+(function loadTG(){
+  try{
+    const s = document.createElement("script");
+    s.src = "https://telegram.org/js/telegram-web-app.js";
+    s.onload = function(){
+      try{
+        tg = window.Telegram && window.Telegram.WebApp;
+        if(tg){ tg.ready(); tg.expand(); }
+      }catch(e){}
+    };
+    s.onerror = function(){};
+    document.head.appendChild(s);
+  }catch(e){}
+})();
+
+/* ===================== УТИЛИТЫ ===================== */
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove("show"), 2200);
+}
+const TRANSLIT = {"а":"A","б":"B","в":"V","г":"G","д":"D","е":"E","ё":"E","ж":"ZH","з":"Z","и":"I","й":"Y","к":"K","л":"L","м":"M","н":"N","о":"O","п":"P","р":"R","с":"S","т":"T","у":"U","ф":"F","х":"KH","ц":"TS","ч":"CH","ш":"SH","щ":"SCH","ъ":"","ы":"Y","ь":"","э":"E","ю":"YU","я":"YA"};
+function translit(s){
+  return String(s).toLowerCase().replace(/ /g,"<").split("").map(c => TRANSLIT[c] !== undefined ? TRANSLIT[c] : c.toUpperCase()).join("").replace(/[^A-Z0-9<]/g,"");
+}
+function mrzPad(s, n){ s = s.slice(0, n); while(s.length < n) s += "<"; return s; }
+
+/* ===================== РАСЧЁТ РЕЗУЛЬТАТА ===================== */
+function buildResult(){
+  const a = state.answers;
+  const picked = DB.order.map(k => DB.markers[k].options.find(o => o.id === a[k]));
+  const powers = DB.order.map((k,i) => ({ emoji: DB.markers[k].emoji, ...picked[i].power }));
+  const p = picked.reduce((acc,o) => acc * o.freq, 1);
+  const oneIn = Math.max(2, Math.round(1/p));
+  const tier = DB.rarityTiers.find(t => oneIn <= t.max).name;
+  const typeName = (DB.typeAdj[a.eyes] || "Базовый") + " " + (DB.typeNoun[a.blood] || "Носитель");
+  const totem = DB.totem[a.body] || "🧬";
+  const name = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name)
+    ? tg.initDataUnsafe.user.first_name.toUpperCase() : "ПРЕДЪЯВИТЕЛЬ";
+  const num = "BIO-" + String(1000000 + Date.now() % 9000000).slice(0,7);
+  const d = new Date();
+  const date = [String(d.getDate()).padStart(2,"0"), String(d.getMonth()+1).padStart(2,"0"), d.getFullYear()].join(".");
+  const mrz1 = mrzPad("P<BIO<" + translit(typeName) + "<<" + translit(name), 30);
+  const mrz2 = mrzPad(num.replace("-","") + "<" + date.replace(/\./g,"") + "<1IN" + oneIn, 30);
+  return { name, num, date, typeName, totem, tier, oneIn, powers, mrz1, mrz2 };
+}
+
+/* ===================== ЭКРАНЫ ===================== */
+function render(){
+  const n = DB.order.length;
+  if(state.step === -1) return renderWelcome();
+  if(state.step < n)    return renderQuestion(state.step);
+  if(state.step === n)  return renderIssuing();
+  renderPassport();
+}
+
+function renderWelcome(){
+  $app.innerHTML = `
+    <div class="screen">
+      <div class="hero">
+        <div class="emblem">🧬</div>
+        <h1 class="title">БИОПАСПОРТ</h1>
+        <div class="title-sub">BIOLOGICAL PASSPORT</div>
+        <p class="lede">Документ о врождённых суперспособностях твоего организма. 6 вопросов, 60 секунд, без регистрации.</p>
+        <p class="fineprint">Не является медицинским документом. Но выглядит солиднее 🙂</p>
+      </div>
+      <button class="btn" id="start">Оформить паспорт</button>
+    </div>`;
+  document.getElementById("start").onclick = () => { state.step = 0; render(); };
+}
+
+function renderQuestion(i){
+  const key = DB.order[i];
+  const m = DB.markers[key];
+  const n = DB.order.length;
+  $app.innerHTML = `
+    <div class="screen">
+      <div class="topbar">
+        <button class="back" id="back">‹</button>
+        <div class="progress-track"><div class="progress-fill" style="width:${(i/n)*100}%"></div></div>
+        <div class="step-num">${i+1}/${n}</div>
+      </div>
+      <div class="q-emoji">${m.emoji}</div>
+      <h2 class="q">${esc(m.q)}</h2>
+      ${m.hint ? `<div class="q-hint">${esc(m.hint)}</div>` : ""}
+      <div class="chips" id="chips">
+        ${m.options.map(o => `
+          <button class="chip${state.answers[key]===o.id ? " sel" : ""}" data-id="${o.id}">
+            ${o.color ? `<span class="dot" style="background:${o.color}"></span>` : ""}
+            ${esc(o.label)}
+            <span class="freq">~${Math.round(o.freq*100)}%</span>
+          </button>`).join("")}
+      </div>
+    </div>`;
+  requestAnimationFrame(() => {
+    const fill = document.querySelector(".progress-fill");
+    if(fill) fill.style.width = ((i+1)/n)*100 + "%";
+  });
+  document.getElementById("back").onclick = () => { state.step = i === 0 ? -1 : i-1; render(); };
+  document.getElementById("chips").querySelectorAll(".chip").forEach(ch => {
+    ch.onclick = () => {
+      if(state._lock) return;
+      state._lock = true;
+      state.answers[key] = ch.dataset.id;
+      ch.classList.add("sel");
+      setTimeout(() => { state._lock = false; state.step = i+1; render(); }, 260); // авто-переход: меньше тапов — выше конверсия
+    };
+  });
+}
+
+function renderIssuing(){
+  const lines = [
+    "> проверка биомаркеров ......... <b>OK</b>",
+    "> поиск в реестре носителей .... <b>OK</b>",
+    "> расчёт редкости комбинации ... <b>OK</b>",
+    "> печать документа ............. <b>ГОТОВО</b>"
+  ];
+  $app.innerHTML = `
+    <div class="screen"><div class="issuing">
+      <div class="label">Оформление документа</div>
+      ${lines.map((l,i)=>`<div class="tline" style="animation-delay:${i*0.32}s">${l}</div>`).join("")}
+    </div></div>`;
+  setTimeout(() => { state.step++; render(); }, lines.length*320 + 500);
+}
+
+function renderPassport(){
+  const r = buildResult();
+  state.result = r;
+  $app.innerHTML = `
+    <div class="screen">
+      <div class="passport-wrap">
+        <div class="card" id="card">
+          <div class="card-cover">
+            <div class="l">
+              <span class="dna">🧬</span>
+              <div>
+                <div class="t1">БИОПАСПОРТ</div>
+                <div class="t2">BIOLOGICAL PASSPORT · RU</div>
+              </div>
+            </div>
+            <div class="num">№ ${r.num}</div>
+          </div>
+          <div class="card-paper">
+            <div class="f-row">
+              <div style="flex:1">
+                <div class="f-label">Предъявитель / Bearer</div>
+                <div class="bearer">${esc(r.name)}</div>
+              </div>
+              <div>
+                <div class="f-label">Выдан / Issued</div>
+                <div class="bearer" style="font-size:14px">${r.date}</div>
+              </div>
+            </div>
+            <div class="f-row">
+              <div style="flex:1">
+                <div class="f-label">Тип носителя / Carrier type</div>
+                <div class="holder-type"><span>${r.totem}</span>${esc(r.typeName)}</div>
+              </div>
+            </div>
+            <div class="f-row">
+              <div>
+                <div class="f-label">Редкость комбинации / Rarity</div>
+                <div class="rarity">★ ${esc(r.tier).toUpperCase()}<small>такой набор — у 1 из ${r.oneIn.toLocaleString("ru-RU")} людей</small></div>
+              </div>
+            </div>
+            <hr class="rule">
+            <div class="f-label" style="margin-bottom:9px">Зарегистрированные способности / Abilities</div>
+            <div class="abilities">
+              ${r.powers.map((p,idx) => `
+                <div class="ability${(OPEN_FIRST && idx===0) ? " open" : ""}" data-i="${idx}">
+                  <button class="ability-head" type="button" aria-expanded="${OPEN_FIRST && idx===0 ? "true" : "false"}">
+                    <span class="pe">${p.emoji}</span>
+                    <span class="ability-name">${esc(p.name)}</span>
+                    <span class="chev" aria-hidden="true">›</span>
+                  </button>
+                  <div class="ability-body"><div class="inner"><p>${esc(descOf(p))}</p></div></div>
+                </div>`).join("")}
+            </div>
+            <div class="locked">🔒 Ещё 4 способности, премиум-дизайн и PDF — в полном паспорте</div>
+            <div class="stamp">ВЫДАНО<br>BIOPASSPORT·26</div>
+            <div class="mrz">${r.mrz1}<br>${r.mrz2}</div>
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn" id="share">Поделиться в Telegram</button>
+        <button class="btn ghost" id="save">Сохранить как фото</button>
+        <button class="btn ghost" id="full">🔓 Полный паспорт — 149 ₽</button>
+      </div>
+      <div class="again"><button id="again">Оформить заново</button></div>
+    </div>`;
+  document.getElementById("share").onclick = share;
+  document.getElementById("save").onclick = savePNG;
+  document.getElementById("full").onclick = showPaywall;
+  document.getElementById("again").onclick = () => { state.step = -1; state.answers = {}; render(); };
+  $app.querySelectorAll(".ability-head").forEach(h => {
+    h.onclick = () => {
+      const ab = h.closest(".ability");
+      const open = ab.classList.toggle("open");
+      h.setAttribute("aria-expanded", open ? "true" : "false");
+    };
+  });
+}
+
+/* ===================== ДЕЙСТВИЯ ===================== */
+function share(){
+  const r = state.result;
+  const text = `🧬 Мой биотип: «${r.typeName}» ${r.totem}\nРедкость: ${r.tier.toLowerCase()} — 1 из ${r.oneIn.toLocaleString("ru-RU")}.\nПроверь свои суперспособности:`;
+  const url = DB.botUrl;
+  if(tg && tg.openTelegramLink){
+    tg.openTelegramLink("https://t.me/share/url?url=" + encodeURIComponent(url) + "&text=" + encodeURIComponent(text));
+    return;
+  }
+  if(navigator.share){ navigator.share({text: text + "\n" + url}).catch(()=>{}); return; }
+  if(navigator.clipboard){ navigator.clipboard.writeText(text + "\n" + url).then(()=>toast("Текст скопирован — вставь в чат")); return; }
+  toast("Шаринг доступен внутри Telegram");
+}
+
+async function savePNG(){
+  if(typeof html2canvas === "undefined"){ toast("html2canvas не загрузился (проверь интернет/CDN)"); return; }
+  const node = document.getElementById("card");
+  toast("Готовлю изображение…");
+
+  let canvas;
+  try{
+    canvas = await html2canvas(node, {
+      scale: 2,
+      backgroundColor: null,   // прозрачные скруглённые углы
+      useCORS: true,
+      logging: false,
+      onclone: (doc) => {
+        // В клоне отключаем анимации (иначе печать ловится в середине анимации
+        // и выходит невидимой) и принудительно раскрываем ВСЕ способности —
+        // сохранённый паспорт должен быть полным, что бы ни было открыто в UI.
+        const st = doc.createElement("style");
+        st.textContent =
+          "*{animation:none!important;transition:none!important}" +
+          ".card{box-shadow:none!important}" +
+          ".stamp{opacity:.72!important;transform:rotate(-12deg) scale(1)!important}" +
+          ".ability-body{grid-template-rows:1fr!important}" +
+          ".chev{transform:rotate(90deg)!important}";
+        doc.head.appendChild(st);
+      }
+    });
+  }catch(e){ toast("Не вышло отрисовать карточку — сделай скриншот"); return; }
+
+  const blob = await new Promise(res => canvas.toBlob(res, "image/png"));
+  if(!blob){ toast("Пустое изображение — сделай скриншот"); return; }
+  const file = new File([blob], "biopassport.png", { type: "image/png" });
+
+  // 1) Нативный шэринг файла — лучший путь в Telegram и на мобильных:
+  //    открывает системный лист, где есть «Сохранить в фото» и отправка в чаты.
+  if(navigator.canShare && navigator.canShare({ files: [file] })){
+    try{ await navigator.share({ files: [file], title: "Биопаспорт" }); return; }
+    catch(e){ if(e && e.name === "AbortError") return; } // отменил — выходим; иначе фоллбэк ниже
+  }
+  // 2) Прямое скачивание — работает в обычных десктоп-браузерах.
+  try{
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "biopassport.png";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toast("Паспорт сохранён 📄");
+    return;
+  }catch(e){}
+  // 3) Последний фоллбэк — открыть картинку отдельно, долгий тап → «Сохранить».
+  try{
+    window.open(URL.createObjectURL(blob), "_blank");
+    toast("Долгий тап по картинке → «Сохранить»");
+  }catch(e){ toast("Не удалось сохранить — сделай скриншот"); }
+}
+
+function showPaywall(){
+  const ov = document.createElement("div");
+  ov.className = "overlay";
+  ov.innerHTML = `
+    <div class="sheet">
+      <div class="label">Полный биопаспорт</div>
+      <h3>Все 10 маркеров и 10 способностей</h3>
+      <p>Хронотип, фототип кожи, вкусовая чувствительность и редкие генетические комбинации. Премиум-дизайн карточки + PDF на стену.</p>
+      <div class="price">149 ₽ · Telegram Stars / ЮKassa</div>
+      <button class="btn" id="pay">Оплатить</button>
+      <button class="btn ghost" id="close">Позже</button>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.querySelector("#pay").onclick = () => { // TODO: подключить Telegram Stars (sendInvoice)
+    toast("Демо: оплата подключается в v0.2");
+    ov.remove();
+  };
+  ov.querySelector("#close").onclick = () => ov.remove();
+  ov.onclick = e => { if(e.target === ov) ov.remove(); };
+}
+
+render();
+</script>
+</body>
+</html>

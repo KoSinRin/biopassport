@@ -4,7 +4,7 @@
 const OPEN_FIRST = true; // первая способность раскрыта по умолчанию
 const PRICE_STARS = 20; // цена полного паспорта в Telegram Stars
 // Бэкенд (Yandex Cloud Function). Пусто → фронт работает в офлайн-режиме с фоллбэками/заглушкой.
-const BACKEND_URL = "https://functions.yandexcloud.net/d4enq5fbbcireapnjcqa?integration=raw";
+const BACKEND_URL = "https://functions.yandexcloud.net/d4enq5fbbcireapnjcqa";
 const STRESS = /[?&#]stress/i.test(location.search + location.hash); // ?stress — длинные тексты для теста вёрстки
 const LONG_DEMO = "Расширенное демо-описание для стресс-теста вёрстки. Меланин радужной оболочки работает как встроенный светофильтр: он рассеивает часть коротковолнового излучения и снижает блики в яркий полдень. У носителей этого маркера обычно выше контрастная чувствительность на солнце, но ниже — в сумерках. Этот абзац намеренно длинный, чтобы проверить переносы строк, межстрочный интервал и корректность экспорта карточки в PNG при большом объёме контента.";
 function descOf(p){ return STRESS ? (p.desc + " " + LONG_DEMO) : p.desc; }
@@ -282,7 +282,7 @@ async function uploadCard(){
   const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
   if(!blob) throw new Error("empty image");
   const b64 = await blobToBase64(blob);
-  const res = await fetch(BACKEND_URL + "&action=upload", {
+  const res = await fetch(BACKEND_URL + "?action=upload", {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ image: b64 })
   });
   const j = await res.json();
@@ -348,7 +348,7 @@ async function savePNG(){
   if(BACKEND_URL && tg && tg.downloadFile){
     try{
       const b64 = await blobToBase64(blob);
-      const res = await fetch(BACKEND_URL + "&action=upload", {
+      const res = await fetch(BACKEND_URL + "?action=upload", {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ image: b64 })
       });
       const j = await res.json();
@@ -473,7 +473,7 @@ function showPaywall(){
     if(BACKEND_URL && tg && tg.openInvoice){
       toast("Открываю оплату…");
       try{
-        const res = await fetch(BACKEND_URL + "&action=invoice", {
+        const res = await fetch(BACKEND_URL + "?action=invoice", {
           method: "POST", headers: { "content-type": "application/json" }, body: "{}"
         });
         const j = await res.json();
