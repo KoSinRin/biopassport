@@ -26,6 +26,11 @@ const s3 = new S3Client({
   region: S3_REGION,
   endpoint: S3_ENDPOINT,
   credentials: { accessKeyId: S3_KEY_ID, secretAccessKey: S3_SECRET },
+  forcePathStyle: true,
+  // Yandex Object Storage не поддерживает новые flexible-checksums из свежего aws-sdk —
+  // иначе PutObject падает с "signature does not match". Отключаем их.
+  requestChecksumCalculation: "WHEN_REQUIRED",
+  responseChecksumValidation: "WHEN_REQUIRED",
 });
 
 function tg(method, payload) {
