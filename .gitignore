@@ -1,0 +1,9 @@
+# Локальный индекс CodeGraph и служебные данные
+.codegraph/
+.supergoal/
+
+# Артефакт сборки бэкенда (пересобирается из backend/*.js)
+backend/biopassport-api.zip
+
+# Node
+node_modules/
