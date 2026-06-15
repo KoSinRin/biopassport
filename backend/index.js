@@ -100,21 +100,27 @@ exports.handler = async (event) => {
   // ---- 3) Вебхук Telegram ----
   try {
     const update = JSON.parse(rawBody);
+    console.log("[webhook] keys=", Object.keys(update).join(","));
     if (update.pre_checkout_query) {
       // обязательно подтвердить в течение 10 секунд, иначе оплата отменится
-      await tg("answerPreCheckoutQuery", { pre_checkout_query_id: update.pre_checkout_query.id, ok: true });
+      const ans = await tg("answerPreCheckoutQuery", { pre_checkout_query_id: update.pre_checkout_query.id, ok: true });
+      console.log("[pre_checkout] answer=", JSON.stringify(ans));
     }
     // Факт оплаты клиент узнаёт из tg.openInvoice(). В тестовом режиме (AUTO_REFUND=1)
     // сразу возвращаем звёзды, чтобы гонять оплату по кругу без потерь.
     const sp = update.message && update.message.successful_payment;
-    if (sp && process.env.AUTO_REFUND === "1") {
-      await tg("refundStarPayment", {
-        user_id: update.message.from.id,
-        telegram_payment_charge_id: sp.telegram_payment_charge_id,
-      });
+    if (sp) {
+      console.log("[successful_payment] charge=", sp.telegram_payment_charge_id);
+      if (process.env.AUTO_REFUND === "1") {
+        const ref = await tg("refundStarPayment", {
+          user_id: update.message.from.id,
+          telegram_payment_charge_id: sp.telegram_payment_charge_id,
+        });
+        console.log("[refund] result=", JSON.stringify(ref));
+      }
     }
   } catch (e) {
-    /* не телеграм-апдейт — игнорируем */
+    console.error("[webhook] parse/handle error:", e && e.message, "| rawHead=", String(rawBody).slice(0, 120));
   }
   return json(200, { ok: true });
 };
