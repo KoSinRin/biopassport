@@ -277,8 +277,7 @@ function blobToBase64(blob){
     r.readAsDataURL(blob);
   });
 }
-async function uploadCard(){
-  const canvas = await renderCardCanvas();
+async function uploadCanvas(canvas){
   const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
   if(!blob) throw new Error("empty image");
   const b64 = await blobToBase64(blob);
@@ -290,13 +289,48 @@ async function uploadCard(){
   return j.url;
 }
 
-// «Поделиться» → публикация карточки в Историю Telegram (нужен бэкенд + shareToStory)
+// Отдельный вертикальный плакат 1080×1920 под Историю (карточка паспорта слишком высокая
+// и обрезается по центру). Акцент — тип носителя и редкость «1 из N».
+async function renderStoryCanvas(){
+  const r = state.result;
+  const handle = "@" + DB.botUrl.split("/").filter(Boolean).pop();
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "position:fixed;left:-99999px;top:0;z-index:-1";
+  wrap.innerHTML = `
+    <div style="width:1080px;height:1920px;box-sizing:border-box;padding:130px 96px 110px;
+      background:radial-gradient(125% 80% at 50% 0%, #16291F 0%, #0B1411 58%);
+      color:#EAF3EE;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+      display:flex;flex-direction:column;align-items:center;text-align:center">
+      <div style="font-size:128px;line-height:1">🧬</div>
+      <div style="margin-top:26px;font-size:66px;font-weight:800;letter-spacing:7px;color:#E7C66B">БИОПАСПОРТ</div>
+      <div style="margin-top:12px;font-size:26px;letter-spacing:9px;color:#7E8C84">BIOLOGICAL PASSPORT</div>
+
+      <div style="margin-top:120px;font-size:30px;letter-spacing:5px;color:#7E8C84">ТИП НОСИТЕЛЯ</div>
+      <div style="margin-top:18px;font-size:66px;font-weight:700;line-height:1.12">${esc(r.totem)} ${esc(r.typeName)}</div>
+      <div style="margin-top:16px;font-size:38px;color:#B9C6BE">${esc(r.name)}</div>
+
+      <div style="margin-top:130px;font-size:30px;letter-spacing:4px;color:#7E8C84">РЕДКОСТЬ КОМБИНАЦИИ</div>
+      <div style="margin-top:22px;font-size:158px;font-weight:800;color:#E7C66B;line-height:1">1 из ${esc(r.oneIn.toLocaleString("ru-RU"))}</div>
+      <div style="margin-top:14px;font-size:42px;color:#EAF3EE">★ ${esc(r.tier)}</div>
+
+      <div style="flex:1"></div>
+      <div style="font-size:42px;font-weight:700">Проверь свой биотип →</div>
+      <div style="margin-top:20px;font-size:36px;color:#E7C66B">${esc(handle)}</div>
+    </div>`;
+  document.body.appendChild(wrap);
+  try{
+    return await html2canvas(wrap.firstElementChild, { scale: 1, backgroundColor: null, useCORS: true, logging: false });
+  } finally { wrap.remove(); }
+}
+
+// «Поделиться» → публикация вертикального плаката в Историю Telegram (нужен бэкенд + shareToStory)
 async function shareStory(){
   if(!(BACKEND_URL && tg && tg.shareToStory)) return share(); // фоллбэк: обычный шэринг ссылкой
   const r = state.result;
   toast("Готовлю историю…");
   try{
-    const url = await uploadCard();
+    const canvas = await renderStoryCanvas();
+    const url = await uploadCanvas(canvas);
     tg.shareToStory(url, { text: `Мой биотип: «${r.typeName}» ${r.totem} · редкость 1 из ${r.oneIn.toLocaleString("ru-RU")}` });
   }catch(e){ toast("Не вышло опубликовать историю — попробуй «Сохранить как фото»"); }
 }

@@ -104,7 +104,15 @@ exports.handler = async (event) => {
       // обязательно подтвердить в течение 10 секунд, иначе оплата отменится
       await tg("answerPreCheckoutQuery", { pre_checkout_query_id: update.pre_checkout_query.id, ok: true });
     }
-    // update.message.successful_payment — для MVP не храним: факт оплаты клиент узнаёт из tg.openInvoice()
+    // Факт оплаты клиент узнаёт из tg.openInvoice(). В тестовом режиме (AUTO_REFUND=1)
+    // сразу возвращаем звёзды, чтобы гонять оплату по кругу без потерь.
+    const sp = update.message && update.message.successful_payment;
+    if (sp && process.env.AUTO_REFUND === "1") {
+      await tg("refundStarPayment", {
+        user_id: update.message.from.id,
+        telegram_payment_charge_id: sp.telegram_payment_charge_id,
+      });
+    }
   } catch (e) {
     /* не телеграм-апдейт — игнорируем */
   }
