@@ -1,9 +1,6 @@
 {
   "name": "biopassport-backend",
   "version": "1.0.0",
-  "description": "Биопаспорт — Yandex Cloud Function: upload в Object Storage + Telegram Stars",
-  "main": "index.js",
-  "dependencies": {
-    "@aws-sdk/client-s3": "^3.600.0"
-  }
+  "description": "Биопаспорт — Yandex Cloud Function: upload в Object Storage (SigV4 на crypto) + Telegram Stars. Без внешних зависимостей.",
+  "main": "index.js"
 }

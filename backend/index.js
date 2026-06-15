@@ -1,12 +1,15 @@
 "use strict";
 
 /* =====================================================================
-   Биопаспорт · бэкенд (Yandex Cloud Function, Node.js 18)
+   Биопаспорт · бэкенд (Yandex Cloud Function, Node.js 22)
    Один публичный обработчик на три задачи (роутинг по ?action и телу):
      • ?action=upload  — принять PNG (base64) → положить в Object Storage → вернуть публичный URL
      • ?action=invoice — создать ссылку на оплату Telegram Stars (createInvoiceLink)
      • без action      — вебхук Telegram (отвечаем на pre_checkout_query)
    Точка входа: index.handler
+
+   ВАЖНО: без внешних зависимостей. Загрузка в S3 — на встроенном crypto (AWS SigV4),
+   чтобы пакет был крошечным и холодный старт ~1с (иначе Telegram-вебхук ловит таймаут).
    ===================================================================== */
 
 const crypto = require("crypto");
@@ -21,26 +24,45 @@ const {
   PRICE_STARS = "20",
 } = process.env;
 
-// Ленивая инициализация S3: тяжёлый @aws-sdk грузится только при загрузке картинки,
-// чтобы холодный старт вебхука/оплаты был быстрым (pre_checkout_query надо успеть за 10 сек).
-let _s3 = null;
-function getS3() {
-  if (!_s3) {
-    const { S3Client } = require("@aws-sdk/client-s3");
-    _s3 = new S3Client({
-      region: S3_REGION,
-      endpoint: S3_ENDPOINT,
-      credentials: { accessKeyId: (S3_KEY_ID || "").trim(), secretAccessKey: (S3_SECRET || "").trim() },
-      forcePathStyle: true,
-      // Yandex Object Storage не поддерживает новые flexible-checksums из свежего aws-sdk —
-      // иначе PutObject падает с "signature does not match". Отключаем их.
-      requestChecksumCalculation: "WHEN_REQUIRED",
-      responseChecksumValidation: "WHEN_REQUIRED",
-    });
-  }
-  return _s3;
+const S3_KEY = (S3_KEY_ID || "").trim();
+const S3_SEC = (S3_SECRET || "").trim();
+
+/* ---------- S3 PutObject через ручную подпись AWS Signature V4 ---------- */
+function hmac(key, data) { return crypto.createHmac("sha256", key).update(data, "utf8").digest(); }
+function sha256hex(data) { return crypto.createHash("sha256").update(data).digest("hex"); }
+
+async function s3Put(key, body, contentType) {
+  const host = new URL(S3_ENDPOINT).host;            // storage.yandexcloud.net
+  const service = "s3";
+  const amzdate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, ""); // YYYYMMDDTHHMMSSZ
+  const datestamp = amzdate.slice(0, 8);
+  const payloadHash = sha256hex(body);
+  const canonicalUri = `/${S3_BUCKET}/${key}`;       // path-style, ключ из безопасных символов
+  const canonicalHeaders = `host:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzdate}\n`;
+  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+  const canonicalRequest = `PUT\n${canonicalUri}\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+  const scope = `${datestamp}/${S3_REGION}/${service}/aws4_request`;
+  const stringToSign = `AWS4-HMAC-SHA256\n${amzdate}\n${scope}\n${sha256hex(canonicalRequest)}`;
+  const kSigning = hmac(hmac(hmac(hmac("AWS4" + S3_SEC, datestamp), S3_REGION), service), "aws4_request");
+  const signature = crypto.createHmac("sha256", kSigning).update(stringToSign, "utf8").digest("hex");
+  const authorization =
+    `AWS4-HMAC-SHA256 Credential=${S3_KEY}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+  const res = await fetch(`${S3_ENDPOINT}/${S3_BUCKET}/${encodeURI(key)}`, {
+    method: "PUT",
+    headers: {
+      "x-amz-date": amzdate,
+      "x-amz-content-sha256": payloadHash,
+      authorization,
+      "content-type": contentType,
+    },
+    body,
+  });
+  if (!res.ok) throw new Error(`S3 ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return `${S3_ENDPOINT}/${S3_BUCKET}/${key}`;
 }
 
+/* ---------- Telegram Bot API ---------- */
 function tg(method, payload) {
   return fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
     method: "POST",
@@ -76,11 +98,10 @@ exports.handler = async (event) => {
       const png = Buffer.from(String(data.image || ""), "base64");
       if (!png.length) return json(400, { error: "empty image" });
       const key = `cards/${Date.now()}-${crypto.randomBytes(4).toString("hex")}.png`;
-      const { PutObjectCommand } = require("@aws-sdk/client-s3");
-      await getS3().send(new PutObjectCommand({ Bucket: S3_BUCKET, Key: key, Body: png, ContentType: "image/png" }));
-      return json(200, { url: `${S3_ENDPOINT}/${S3_BUCKET}/${key}` });
+      const url = await s3Put(key, png, "image/png");
+      return json(200, { url });
     } catch (e) {
-      return json(500, { error: String(e && e.message || e) });
+      return json(500, { error: String((e && e.message) || e) });
     }
   }
 
