@@ -9,7 +9,6 @@
    Точка входа: index.handler
    ===================================================================== */
 
-const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const crypto = require("crypto");
 
 const {
@@ -22,16 +21,25 @@ const {
   PRICE_STARS = "20",
 } = process.env;
 
-const s3 = new S3Client({
-  region: S3_REGION,
-  endpoint: S3_ENDPOINT,
-  credentials: { accessKeyId: (S3_KEY_ID || "").trim(), secretAccessKey: (S3_SECRET || "").trim() },
-  forcePathStyle: true,
-  // Yandex Object Storage не поддерживает новые flexible-checksums из свежего aws-sdk —
-  // иначе PutObject падает с "signature does not match". Отключаем их.
-  requestChecksumCalculation: "WHEN_REQUIRED",
-  responseChecksumValidation: "WHEN_REQUIRED",
-});
+// Ленивая инициализация S3: тяжёлый @aws-sdk грузится только при загрузке картинки,
+// чтобы холодный старт вебхука/оплаты был быстрым (pre_checkout_query надо успеть за 10 сек).
+let _s3 = null;
+function getS3() {
+  if (!_s3) {
+    const { S3Client } = require("@aws-sdk/client-s3");
+    _s3 = new S3Client({
+      region: S3_REGION,
+      endpoint: S3_ENDPOINT,
+      credentials: { accessKeyId: (S3_KEY_ID || "").trim(), secretAccessKey: (S3_SECRET || "").trim() },
+      forcePathStyle: true,
+      // Yandex Object Storage не поддерживает новые flexible-checksums из свежего aws-sdk —
+      // иначе PutObject падает с "signature does not match". Отключаем их.
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
+    });
+  }
+  return _s3;
+}
 
 function tg(method, payload) {
   return fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
@@ -68,7 +76,8 @@ exports.handler = async (event) => {
       const png = Buffer.from(String(data.image || ""), "base64");
       if (!png.length) return json(400, { error: "empty image" });
       const key = `cards/${Date.now()}-${crypto.randomBytes(4).toString("hex")}.png`;
-      await s3.send(new PutObjectCommand({ Bucket: S3_BUCKET, Key: key, Body: png, ContentType: "image/png" }));
+      const { PutObjectCommand } = require("@aws-sdk/client-s3");
+      await getS3().send(new PutObjectCommand({ Bucket: S3_BUCKET, Key: key, Body: png, ContentType: "image/png" }));
       return json(200, { url: `${S3_ENDPOINT}/${S3_BUCKET}/${key}` });
     } catch (e) {
       return json(500, { error: String(e && e.message || e) });
