@@ -293,10 +293,8 @@ function renderPassport(full){
               <div class="combo-desc">${esc(r.combo.line)}</div>
             </div>` : ""}
             <hr class="rule">
-            <div class="abilities-head">
-              <div class="f-label">Зарегистрированные способности / Abilities</div>
-              ${!full ? `<div class="comp"><div class="comp-bar"><div class="comp-fill" style="width:${r.percent}%"></div></div><span class="comp-pct">${r.percent}%</span></div>` : ""}
-            </div>
+            <div class="f-label" style="margin-bottom:9px">Зарегистрированные способности / Abilities</div>
+            ${!full ? `<div class="comp"><span class="comp-pct">Паспорт заполнен на ${r.percent}%</span><div class="comp-bar"><div class="comp-fill" style="width:${r.percent}%"></div></div></div>` : ""}
             <div class="abilities">
               ${r.powers.map((p,idx) => `
                 <div class="ability${(OPEN_FIRST && idx===0) ? " open" : ""}" data-i="${idx}">
@@ -310,7 +308,7 @@ function renderPassport(full){
             </div>
             ${full ? "" : `
             <div class="locked-list">
-              ${DB.premiumOrder.slice(0,4).map(k => `<div class="locked-row"><span class="pe">${esc(DB.markers[k].emoji)}</span><span class="locked-bar"></span><span class="locked-lock">🔒</span></div>`).join("")}
+              ${DB.premiumOrder.slice(0,3).map(k => `<div class="locked-row"><span class="pe">${esc(DB.markers[k].emoji)}</span><span class="locked-bar"></span><span class="locked-lock">🔒</span></div>`).join("")}
               <div class="locked-cta">🔒 Ещё ${DB.premiumOrder.length} биомаркеров, синергий и PDF — в полном паспорте</div>
             </div>`}
             <div class="stamp">ВЫДАНО<br>BIOPASSPORT·26</div>
@@ -560,11 +558,17 @@ async function savePDF(){
       startCss = cut;
     }
 
-    // В Telegram webview pdf.save() (т.е. <a download>) файл не качает — заливаем PDF на бэкенд
-    // и отдаём через нативный downloadFile (как и PNG). Иначе тост врал бы об успехе.
+    const blob = pdf.output("blob");
+    const file = new File([blob], "biopassport.pdf", { type: "application/pdf" });
+
+    // 1) Нативный шэринг файла — лучший путь на мобильных (на iOS Telegram → «Сохранить в Файлы»)
+    if(navigator.canShare && navigator.canShare({ files: [file] })){
+      try{ await navigator.share({ files: [file], title: "Биопаспорт" }); return; }
+      catch(e){ if(e && e.name === "AbortError") return; }
+    }
+    // 2) Telegram downloadFile через бэкенд (Android, где шэринг файлов недоступен)
     if(BACKEND_URL && tg && tg.downloadFile){
       try{
-        const blob = pdf.output("blob");
         const b64 = await blobToBase64(blob);
         const res = await fetch(BACKEND_URL + "?action=upload", {
           method: "POST", headers: { "content-type": "application/json" },
@@ -572,10 +576,13 @@ async function savePDF(){
         });
         const j = await res.json();
         if(j.url){ tg.downloadFile({ url: j.url, file_name: "biopassport.pdf" }); return; }
-      }catch(e){ /* падаем на pdf.save ниже */ }
+      }catch(e){ /* падаем ниже */ }
     }
-    pdf.save("biopassport.pdf"); // десктоп — прямое скачивание
-    toast("PDF сохранён 📄");
+    // 3) Десктоп — прямое скачивание
+    try{ pdf.save("biopassport.pdf"); toast("PDF сохранён 📄"); return; }catch(e){}
+    // 4) Последний фоллбэк — открыть PDF в новой вкладке
+    try{ window.open(URL.createObjectURL(blob), "_blank"); toast("Открыл PDF — сохрани вручную"); }
+    catch(e){ toast("Не удалось сохранить PDF — сделай скриншот"); }
   }catch(e){ toast("Не удалось собрать PDF — сделай скриншот"); }
 }
 
