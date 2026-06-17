@@ -53,6 +53,23 @@ function translit(s){
 function mrzPad(s, n){ s = s.slice(0, n); while(s.length < n) s += "<"; return s; }
 
 /* ===================== РАСЧЁТ РЕЗУЛЬТАТА ===================== */
+// Округление «по-человечески» до 2 значащих цифр (для тизера потенциальной редкости).
+function niceRound(n){
+  if(n < 1000) return Math.round(n/10)*10;
+  const mag = Math.pow(10, Math.floor(Math.log10(n)) - 1);
+  return Math.round(n/mag)*mag;
+}
+// Первая подходящая синергия из DB.combos (need: ключ-маркер → допустимые id).
+function findCombo(a){
+  if(!Array.isArray(DB.combos)) return null;
+  for(const c of DB.combos){
+    let ok = true;
+    for(const k in c.need){ if(!c.need[k].includes(a[k])){ ok = false; break; } }
+    if(ok) return c;
+  }
+  return null;
+}
+
 function buildResult(full){
   const a = state.answers;
   // full → бесплатные + премиум-маркеры; иначе только бесплатные
@@ -65,6 +82,19 @@ function buildResult(full){
   const p = picked.reduce((acc,o) => acc * o.freq, 1);
   const oneIn = Math.max(2, Math.round(1/p));
   const tier = DB.rarityTiers.find(t => oneIn <= t.max).name;
+  const combo = findCombo(a);
+  // Заполненность паспорта и тизер потенциальной редкости (только для бесплатного).
+  const totalMarkers = DB.order.length + DB.premiumOrder.length;
+  const percent = Math.round(keys.length / totalMarkers * 100);
+  let potentialOneIn = null;
+  if(!full){
+    // Минимальный прирост редкости: берём САМЫЕ частые опции премиум-маркеров → честный «пол».
+    const premMinMult = DB.premiumOrder.reduce((acc,k) => {
+      const opts = DB.markers[k].options.filter(o => !o.skip);
+      return acc * Math.max.apply(null, opts.map(o => o.freq));
+    }, 1);
+    potentialOneIn = niceRound(Math.round(oneIn / premMinMult));
+  }
   const typeName = (DB.typeAdj[a.eyes] || "Базовый") + " " + (DB.typeNoun[a.blood] || "Носитель");
   const totem = DB.totem[a.body] || "🧬";
   const name = (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name)
@@ -76,7 +106,7 @@ function buildResult(full){
     || [String(d.getDate()).padStart(2,"0"), String(d.getMonth()+1).padStart(2,"0"), d.getFullYear()].join(".");
   const mrz1 = mrzPad("P<BIO<" + translit(typeName) + "<<" + translit(name), 30);
   const mrz2 = mrzPad(num.replace("-","") + "<" + date.replace(/\./g,"") + "<1IN" + oneIn, 30);
-  return { name, num, date, typeName, totem, tier, oneIn, powers, mrz1, mrz2 };
+  return { name, num, date, typeName, totem, tier, oneIn, powers, mrz1, mrz2, combo, percent, potentialOneIn };
 }
 
 /* ===================== ЭКРАНЫ ===================== */
@@ -253,10 +283,20 @@ function renderPassport(full){
               <div>
                 <div class="f-label">Редкость комбинации / Rarity</div>
                 <div class="rarity">★ ${esc(r.tier).toUpperCase()}<small>такой набор — у 1 из ${esc(r.oneIn.toLocaleString("ru-RU"))} людей</small></div>
+                ${r.potentialOneIn ? `<div class="rarity-teaser">🔓 С полным паспортом — обычно от 1 из ${esc(r.potentialOneIn.toLocaleString("ru-RU"))}</div>` : ""}
               </div>
             </div>
+            ${r.combo ? `
+            <div class="combo">
+              <div class="f-label">Обнаруженная синергия / Synergy</div>
+              <div class="combo-title"><span>${esc(r.combo.emoji)}</span>${esc(r.combo.title)}</div>
+              <div class="combo-desc">${esc(r.combo.line)}</div>
+            </div>` : ""}
             <hr class="rule">
-            <div class="f-label" style="margin-bottom:9px">Зарегистрированные способности / Abilities</div>
+            <div class="abilities-head">
+              <div class="f-label">Зарегистрированные способности / Abilities</div>
+              ${!full ? `<div class="comp"><div class="comp-bar"><div class="comp-fill" style="width:${r.percent}%"></div></div><span class="comp-pct">${r.percent}%</span></div>` : ""}
+            </div>
             <div class="abilities">
               ${r.powers.map((p,idx) => `
                 <div class="ability${(OPEN_FIRST && idx===0) ? " open" : ""}" data-i="${idx}">
@@ -268,7 +308,11 @@ function renderPassport(full){
                   <div class="ability-body"><div class="inner"><p class="power-sup">${esc(descOf(p))}</p>${p.risk ? `<p class="power-risk">${esc(p.risk)}</p>` : ""}</div></div>
                 </div>`).join("")}
             </div>
-            ${full ? "" : `<div class="locked">🔒 Ещё ${DB.premiumOrder.length} биомаркеров и PDF — в полном паспорте</div>`}
+            ${full ? "" : `
+            <div class="locked-list">
+              ${DB.premiumOrder.slice(0,4).map(k => `<div class="locked-row"><span class="pe">${esc(DB.markers[k].emoji)}</span><span class="locked-bar"></span><span class="locked-lock">🔒</span></div>`).join("")}
+              <div class="locked-cta">🔒 Ещё ${DB.premiumOrder.length} биомаркеров, синергий и PDF — в полном паспорте</div>
+            </div>`}
             <div class="stamp">ВЫДАНО<br>BIOPASSPORT·26</div>
             <div class="mrz">${esc(r.mrz1)}<br>${esc(r.mrz2)}</div>
           </div>
