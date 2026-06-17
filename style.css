@@ -46,8 +46,31 @@ body{
 .emblem::before{content:"";position:absolute;inset:6px;border-radius:50%;border:1px dashed rgba(201,162,39,.5)}
 h1.title{font-size:34px;letter-spacing:.14em;font-weight:800;color:var(--text)}
 .title-sub{font-family:var(--mono);font-size:11px;letter-spacing:.32em;color:var(--gold);margin-top:6px}
-.lede{margin-top:18px;font-size:15.5px;line-height:1.55;color:var(--muted);max-width:300px}
+.lede{margin-top:18px;font-size:15.5px;line-height:1.55;color:var(--muted);max-width:320px}
 .fineprint{margin-top:14px;font-size:11.5px;color:#5C6E63}
+
+/* ---------- приветствие: образец-карточка ---------- */
+.welcome{justify-content:flex-start}
+.welcome .hero{flex:0 0 auto;justify-content:flex-start;padding-top:6px}
+.welcome .emblem{width:82px;height:82px;font-size:36px;margin-bottom:16px}
+.tagline{margin-top:14px;font-size:14.5px;font-weight:700;color:var(--gold-soft);letter-spacing:.01em}
+.welcome .lede{margin-top:10px}
+.preview{margin-top:24px;position:relative}
+.preview-tag{font-family:var(--mono);font-size:9.5px;letter-spacing:.24em;color:var(--muted);text-transform:uppercase;text-align:center;margin-bottom:11px}
+.card.mini{transform:rotate(-1.4deg);box-shadow:0 14px 36px rgba(0,0,0,.5);animation:none}
+.card.mini::after{
+  content:"ОБРАЗЕЦ";position:absolute;right:12px;top:52px;transform:rotate(-12deg);
+  border:2px solid var(--green);color:var(--green);font-family:var(--mono);
+  font-size:9px;letter-spacing:.2em;padding:5px 9px;border-radius:7px;opacity:.5;pointer-events:none;
+}
+.card.mini .holder-type{font-size:17px}
+.mini-powers{display:flex;flex-wrap:wrap;gap:6px;margin-top:13px}
+.mini-powers span{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.03em;color:var(--paper-mut);
+  border:1px solid rgba(27,94,67,.3);border-radius:999px;padding:4px 9px;background:rgba(27,94,67,.05);
+}
+.cta{margin-top:auto;padding-top:24px}
+.welcome .fineprint{text-align:center}
 
 /* ---------- вопросы ---------- */
 .topbar{display:flex;align-items:center;gap:14px;margin-bottom:6px;min-height:32px}

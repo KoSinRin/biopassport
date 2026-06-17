@@ -97,15 +97,47 @@ function render(){
 
 function renderWelcome(){
   $app.innerHTML = `
-    <div class="screen">
+    <div class="screen welcome">
       <div class="hero">
         <div class="emblem">🧬</div>
         <h1 class="title">БИОПАСПОРТ</h1>
         <div class="title-sub">BIOLOGICAL PASSPORT</div>
-        <p class="lede">Документ о врождённых суперспособностях твоего организма. 6 вопросов, 60 секунд, без регистрации.</p>
-        <p class="fineprint">Не является медицинским документом. Но выглядит солиднее 🙂</p>
+        <p class="tagline">Не медкарта — твоя биологическая визитка.</p>
+        <p class="lede">В тебе зашиты способности, которых нет у большинства. Ответь на 6 вопросов — и узнай свой биологический класс и редкость своей комбинации.</p>
       </div>
-      <button class="btn" id="start">Оформить паспорт</button>
+
+      <div class="preview" aria-hidden="true">
+        <div class="preview-tag">образец документа</div>
+        <div class="card mini">
+          <div class="card-cover">
+            <div class="l">
+              <span class="dna">🧬</span>
+              <div>
+                <div class="t1">БИОПАСПОРТ</div>
+                <div class="t2">BIOLOGICAL PASSPORT</div>
+              </div>
+            </div>
+            <div class="num">№ БП-0000</div>
+          </div>
+          <div class="card-paper">
+            <div class="f-label">Тип носителя / Carrier type</div>
+            <div class="holder-type" style="padding-right:0"><span>🐺</span>Огненный Алхимик</div>
+            <hr class="rule">
+            <div class="f-label">Редкость комбинации / Rarity</div>
+            <div class="rarity" style="padding-right:0">★ ЛЕГЕНДАРНАЯ<small>такой набор — у 1 из 32 000 людей</small></div>
+            <div class="mini-powers">
+              <span>👁 Волчий взгляд</span>
+              <span>🩸 Универсальный реципиент</span>
+              <span>🔒 +10 способностей</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cta">
+        <button class="btn" id="start">Узнать свой класс</button>
+        <p class="fineprint">За диагнозом — к врачу. За поводом для гордости — сюда.</p>
+      </div>
     </div>`;
   document.getElementById("start").onclick = () => { state.step = 0; render(); };
 }
