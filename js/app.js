@@ -379,13 +379,18 @@ async function renderStoryCanvas(){
       <div style="margin-top:26px;font-size:66px;font-weight:800;letter-spacing:7px;color:#E7C66B">БИОПАСПОРТ</div>
       <div style="margin-top:12px;font-size:26px;letter-spacing:9px;color:#7E8C84">BIOLOGICAL PASSPORT</div>
 
-      <div style="margin-top:120px;font-size:30px;letter-spacing:5px;color:#7E8C84">ТИП НОСИТЕЛЯ</div>
+      <div style="margin-top:88px;font-size:30px;letter-spacing:5px;color:#7E8C84">ТИП НОСИТЕЛЯ</div>
       <div style="margin-top:18px;font-size:66px;font-weight:700;line-height:1.12">${esc(r.totem)} ${esc(r.typeName)}</div>
       <div style="margin-top:16px;font-size:38px;color:#B9C6BE">${esc(r.name)}</div>
 
-      <div style="margin-top:130px;font-size:30px;letter-spacing:4px;color:#7E8C84">РЕДКОСТЬ КОМБИНАЦИИ</div>
-      <div style="margin-top:22px;font-size:158px;font-weight:800;color:#E7C66B;line-height:1">1 из ${esc(r.oneIn.toLocaleString("ru-RU"))}</div>
+      <div style="margin-top:88px;font-size:30px;letter-spacing:4px;color:#7E8C84">РЕДКОСТЬ КОМБИНАЦИИ</div>
+      <div style="margin-top:22px;font-size:150px;font-weight:800;color:#E7C66B;line-height:1">1 из ${esc(r.oneIn.toLocaleString("ru-RU"))}</div>
       <div style="margin-top:14px;font-size:42px;color:#EAF3EE">★ ${esc(r.tier)}</div>
+
+      ${r.combo ? `
+      <div style="margin-top:84px;font-size:30px;letter-spacing:4px;color:#7E8C84">ОБНАРУЖЕННАЯ СИНЕРГИЯ</div>
+      <div style="margin-top:18px;font-size:62px;font-weight:700;color:#A9D6BF;line-height:1.12">${esc(r.combo.emoji)} ${esc(r.combo.title)}</div>
+      <div style="margin-top:18px;font-size:31px;line-height:1.42;color:#9FB1A7;max-width:780px">${esc(r.combo.line)}</div>` : ""}
 
       <div style="flex:1"></div>
       <div style="font-size:42px;font-weight:700">Проверь свой биотип →</div>
@@ -405,7 +410,7 @@ async function shareStory(){
   try{
     const canvas = await renderStoryCanvas();
     const url = await uploadCanvas(canvas);
-    tg.shareToStory(url, { text: `Мой биотип: «${r.typeName}» ${r.totem} · редкость 1 из ${r.oneIn.toLocaleString("ru-RU")}` });
+    tg.shareToStory(url, { text: `Мой биотип: «${r.typeName}» ${r.totem}${r.combo ? " · " + r.combo.emoji + " " + r.combo.title : ""} · редкость 1 из ${r.oneIn.toLocaleString("ru-RU")}` });
   }catch(e){ toast("Не вышло опубликовать историю — попробуй «Сохранить как фото»"); }
 }
 
@@ -559,15 +564,11 @@ async function savePDF(){
     }
 
     const blob = pdf.output("blob");
-    const file = new File([blob], "biopassport.pdf", { type: "application/pdf" });
 
-    // 1) Нативный шэринг файла — лучший путь на мобильных (на iOS Telegram → «Сохранить в Файлы»)
-    if(navigator.canShare && navigator.canShare({ files: [file] })){
-      try{ await navigator.share({ files: [file], title: "Биопаспорт" }); return; }
-      catch(e){ if(e && e.name === "AbortError") return; }
-    }
-    // 2) Telegram downloadFile через бэкенд (Android, где шэринг файлов недоступен)
-    if(BACKEND_URL && tg && tg.downloadFile){
+    // В Telegram (Android/iOS) надёжнее всего отдать файл нативно — тем же путём, что и PNG:
+    // грузим PDF на бэкенд → tg.downloadFile (диалог сохранения), а если метода нет —
+    // tg.openLink (PDF откроется в браузере, где есть «Скачать»).
+    if(BACKEND_URL && tg && (tg.downloadFile || tg.openLink)){
       try{
         const b64 = await blobToBase64(blob);
         const res = await fetch(BACKEND_URL + "?action=upload", {
@@ -575,12 +576,24 @@ async function savePDF(){
           body: JSON.stringify({ image: b64, type: "pdf" })
         });
         const j = await res.json();
-        if(j.url){ tg.downloadFile({ url: j.url, file_name: "biopassport.pdf" }); return; }
-      }catch(e){ /* падаем ниже */ }
+        if(j.url){
+          if(tg.downloadFile){ tg.downloadFile({ url: j.url, file_name: "biopassport.pdf" }); }
+          else { tg.openLink(j.url); toast("Открыл PDF в браузере — там кнопка «Скачать»"); }
+          return;
+        }
+        toast("PDF: сервер не принял файл");
+        return;
+      }catch(e){ toast("PDF: не удалось отправить на сервер"); return; }
     }
-    // 3) Десктоп — прямое скачивание
+
+    // Вне Telegram — системный шэринг файла (мобильные браузеры)
+    const file = new File([blob], "biopassport.pdf", { type: "application/pdf" });
+    if(navigator.canShare && navigator.canShare({ files: [file] })){
+      try{ await navigator.share({ files: [file], title: "Биопаспорт" }); return; }
+      catch(e){ if(e && e.name === "AbortError") return; }
+    }
+    // Десктоп — прямое скачивание, иначе открыть в новой вкладке
     try{ pdf.save("biopassport.pdf"); toast("PDF сохранён 📄"); return; }catch(e){}
-    // 4) Последний фоллбэк — открыть PDF в новой вкладке
     try{ window.open(URL.createObjectURL(blob), "_blank"); toast("Открыл PDF — сохрани вручную"); }
     catch(e){ toast("Не удалось сохранить PDF — сделай скриншот"); }
   }catch(e){ toast("Не удалось собрать PDF — сделай скриншот"); }
