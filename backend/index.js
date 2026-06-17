@@ -91,14 +91,17 @@ exports.handler = async (event) => {
       ? Buffer.from(event.body, "base64").toString("utf8")
       : (event && event.body) || "";
 
-  // ---- 1) Загрузка PNG → публичный URL ----
+  // ---- 1) Загрузка файла (PNG по умолчанию, PDF при type:"pdf") → публичный URL ----
   if (q.action === "upload") {
     try {
       const data = JSON.parse(rawBody);
-      const png = Buffer.from(String(data.image || ""), "base64");
-      if (!png.length) return json(400, { error: "empty image" });
-      const key = `cards/${Date.now()}-${crypto.randomBytes(4).toString("hex")}.png`;
-      const url = await s3Put(key, png, "image/png");
+      const bytes = Buffer.from(String(data.image || ""), "base64");
+      if (!bytes.length) return json(400, { error: "empty file" });
+      const isPdf = data.type === "pdf";
+      const ext = isPdf ? "pdf" : "png";
+      const contentType = isPdf ? "application/pdf" : "image/png";
+      const key = `cards/${Date.now()}-${crypto.randomBytes(4).toString("hex")}.${ext}`;
+      const url = await s3Put(key, bytes, contentType);
       return json(200, { url });
     } catch (e) {
       return json(500, { error: String((e && e.message) || e) });

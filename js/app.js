@@ -103,7 +103,7 @@ function renderWelcome(){
         <h1 class="title">БИОПАСПОРТ</h1>
         <div class="title-sub">BIOLOGICAL PASSPORT</div>
         <p class="tagline">Не медкарта — твоя биологическая визитка.</p>
-        <p class="lede">В тебе зашиты способности, которых нет у большинства. Ответь на 6 вопросов — и узнай свой биологический класс и редкость своей комбинации.</p>
+        <p class="lede">В тебе зашиты способности, которых нет у большинства. Ответь на 8 вопросов — и узнай свой биологический класс и редкость своей комбинации.</p>
       </div>
 
       <div class="preview" aria-hidden="true">
@@ -516,7 +516,21 @@ async function savePDF(){
       startCss = cut;
     }
 
-    pdf.save("biopassport.pdf"); // десктоп — скачивание; в Telegram webview потребует бэкенд (downloadFile)
+    // В Telegram webview pdf.save() (т.е. <a download>) файл не качает — заливаем PDF на бэкенд
+    // и отдаём через нативный downloadFile (как и PNG). Иначе тост врал бы об успехе.
+    if(BACKEND_URL && tg && tg.downloadFile){
+      try{
+        const blob = pdf.output("blob");
+        const b64 = await blobToBase64(blob);
+        const res = await fetch(BACKEND_URL + "?action=upload", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ image: b64, type: "pdf" })
+        });
+        const j = await res.json();
+        if(j.url){ tg.downloadFile({ url: j.url, file_name: "biopassport.pdf" }); return; }
+      }catch(e){ /* падаем на pdf.save ниже */ }
+    }
+    pdf.save("biopassport.pdf"); // десктоп — прямое скачивание
     toast("PDF сохранён 📄");
   }catch(e){ toast("Не удалось собрать PDF — сделай скриншот"); }
 }
