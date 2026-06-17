@@ -558,7 +558,7 @@ async function savePDF(){
 
       const imgHmm = pageW * sh / canvas.width;
       if(!first) pdf.addPage();
-      pdf.addImage(slice.toDataURL("image/png"), "PNG", 0, 0, pageW, imgHmm);
+      pdf.addImage(slice.toDataURL("image/jpeg", 0.82), "JPEG", 0, 0, pageW, imgHmm);
       first = false;
       startCss = cut;
     }
