@@ -130,7 +130,7 @@ h2.q{font-size:24px;font-weight:700;line-height:1.25}
 .f-label{font-family:var(--mono);font-size:8.5px;letter-spacing:.18em;color:var(--paper-mut);text-transform:uppercase;margin-bottom:3px}
 .f-row{display:flex;gap:16px;margin-bottom:13px}
 .f-row>div{min-width:0}
-.bearer{font-size:17px;font-weight:800;letter-spacing:.06em}
+.bearer{font-size:17px;font-weight:800;letter-spacing:.06em;padding-right:.22em}
 .holder-type{font-size:19px;font-weight:800;letter-spacing:.03em;display:flex;align-items:center;gap:8px;padding-right:80px}
 .rarity{font-size:12.5px;font-weight:700;color:var(--green);padding-right:80px}
 .rarity small{display:block;font-weight:500;color:var(--paper-mut);margin-top:2px;font-size:11px}
@@ -143,6 +143,15 @@ h2.q{font-size:24px;font-weight:700;line-height:1.25}
 }
 .combo-title{font-size:13px;font-weight:700;color:var(--green);display:flex;align-items:center;gap:7px;margin-top:2px}
 .combo-desc{font-size:11.5px;line-height:1.45;color:var(--paper-mut);margin-top:5px}
+.combo-item.multi{margin-top:10px;padding-top:9px;border-top:1px dashed rgba(27,94,67,.28)}
+.combo-more{margin-top:9px;font-size:10.5px;font-weight:600;color:#8A6D14;letter-spacing:.01em}
+
+/* ---------- заключение «научного совета» ---------- */
+.council{
+  margin:2px 0 4px;padding:9px 11px;font-size:11px;line-height:1.45;font-style:italic;
+  color:var(--paper-mut);border:1px dashed rgba(27,94,67,.3);border-radius:9px;background:rgba(27,94,67,.04);
+}
+.council-label{display:block;font-style:normal;font-weight:700;font-size:9.5px;letter-spacing:.05em;color:var(--green);margin-bottom:3px;text-transform:uppercase}
 
 /* ---------- тизер потенциальной редкости ---------- */
 .rarity-teaser{

@@ -59,15 +59,15 @@ function niceRound(n){
   const mag = Math.pow(10, Math.floor(Math.log10(n)) - 1);
   return Math.round(n/mag)*mag;
 }
-// Первая подходящая синергия из DB.combos (need: ключ-маркер → допустимые id).
-function findCombo(a){
-  if(!Array.isArray(DB.combos)) return null;
-  for(const c of DB.combos){
-    let ok = true;
-    for(const k in c.need){ if(!c.need[k].includes(a[k])){ ok = false; break; } }
-    if(ok) return c;
-  }
-  return null;
+// Все подходящие синергии из DB.combos (need: ключ-маркер → допустимые id).
+// Фоллбэк-комбо по телосложению показываем, только если нет ни одной «настоящей».
+// Сортируем по специфичности (больше условий → реже → выше), чтобы топ был самым ярким.
+function findCombos(a){
+  if(!Array.isArray(DB.combos)) return [];
+  const matched = DB.combos.filter(c => Object.keys(c.need).every(k => c.need[k].includes(a[k])));
+  const real = matched.filter(c => !c.fallback);
+  const list = real.length ? real : matched.filter(c => c.fallback).slice(0, 1);
+  return list.sort((x, y) => Object.keys(y.need).length - Object.keys(x.need).length);
 }
 
 function buildResult(full){
@@ -82,7 +82,7 @@ function buildResult(full){
   const p = picked.reduce((acc,o) => acc * o.freq, 1);
   const oneIn = Math.max(2, Math.round(1/p));
   const tier = DB.rarityTiers.find(t => oneIn <= t.max).name;
-  const combo = findCombo(a);
+  const combos = findCombos(a);
   // Заполненность паспорта и тизер потенциальной редкости (только для бесплатного).
   const totalMarkers = DB.order.length + DB.premiumOrder.length;
   const percent = Math.round(keys.length / totalMarkers * 100);
@@ -106,7 +106,11 @@ function buildResult(full){
     || [String(d.getDate()).padStart(2,"0"), String(d.getMonth()+1).padStart(2,"0"), d.getFullYear()].join(".");
   const mrz1 = mrzPad("P<BIO<" + translit(typeName) + "<<" + translit(name), 30);
   const mrz2 = mrzPad(num.replace("-","") + "<" + date.replace(/\./g,"") + "<1IN" + oneIn, 30);
-  return { name, num, date, typeName, totem, tier, oneIn, powers, mrz1, mrz2, combo, percent, potentialOneIn };
+  // Случайное «заключение совета» фиксируем при первом построении — чтобы не менялось при перерисовке.
+  const council = (state.result && state.result.council)
+    || (Array.isArray(DB.councilNotes) && DB.councilNotes.length
+        ? DB.councilNotes[Math.floor(Math.random() * DB.councilNotes.length)] : null);
+  return { name, num, date, typeName, totem, tier, oneIn, powers, mrz1, mrz2, combos, percent, potentialOneIn, council };
 }
 
 /* ===================== ЭКРАНЫ ===================== */
@@ -246,8 +250,13 @@ function renderIssuing(prem){
 
 function renderPassport(full){
   if(tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+  // Будим бэкенд заранее (Railway спит в простое) — чтобы первое «Сохранить» не упало по холодному старту.
+  if(BACKEND_URL) try{ fetch(BACKEND_URL, { method: "OPTIONS" }).catch(()=>{}); }catch(e){}
   const r = buildResult(full);
   state.result = r;
+  // На бесплатном — одна синергия-тизер; в полном паспорте раскрываем все найденные.
+  const shownCombos = full ? r.combos : r.combos.slice(0, 1);
+  const hiddenCombos = full ? 0 : Math.max(0, r.combos.length - 1);
   $app.innerHTML = `
     <div class="screen">
       <div class="passport-wrap">
@@ -286,11 +295,15 @@ function renderPassport(full){
                 ${r.potentialOneIn ? `<div class="rarity-teaser">🔓 С полным паспортом — обычно от 1 из ${esc(r.potentialOneIn.toLocaleString("ru-RU"))}</div>` : ""}
               </div>
             </div>
-            ${r.combo ? `
+            ${shownCombos.length ? `
             <div class="combo">
-              <div class="f-label">Обнаруженная синергия / Synergy</div>
-              <div class="combo-title"><span>${esc(r.combo.emoji)}</span>${esc(r.combo.title)}</div>
-              <div class="combo-desc">${esc(r.combo.line)}</div>
+              <div class="f-label">${shownCombos.length > 1 ? "Обнаруженные синергии / Synergies" : "Обнаруженная синергия / Synergy"}</div>
+              ${shownCombos.map((c,i) => `
+                <div class="combo-item${i ? " multi" : ""}">
+                  <div class="combo-title"><span>${esc(c.emoji)}</span>${esc(c.title)}</div>
+                  <div class="combo-desc">${esc(c.line)}</div>
+                </div>`).join("")}
+              ${hiddenCombos ? `<div class="combo-more">🔒 Ещё ${hiddenCombos} ${hiddenCombos === 1 ? "синергия" : (hiddenCombos < 5 ? "синергии" : "синергий")} — в полном паспорте</div>` : ""}
             </div>` : ""}
             <hr class="rule">
             <div class="f-label" style="margin-bottom:9px">Зарегистрированные способности / Abilities</div>
@@ -311,6 +324,7 @@ function renderPassport(full){
               ${DB.premiumOrder.slice(0,3).map(k => `<div class="locked-row"><span class="pe">${esc(DB.markers[k].emoji)}</span><span class="locked-bar"></span><span class="locked-lock">🔒</span></div>`).join("")}
               <div class="locked-cta">🔒 Ещё ${DB.premiumOrder.length} биомаркеров, синергий и PDF — в полном паспорте</div>
             </div>`}
+            ${r.council ? `<div class="council"><span class="council-label">⚖ Заключение научного совета</span>${esc(r.council)}</div>` : ""}
             <div class="stamp">ВЫДАНО<br>BIOPASSPORT·26</div>
             <div class="mrz">${esc(r.mrz1)}<br>${esc(r.mrz2)}</div>
           </div>
@@ -351,23 +365,42 @@ function blobToBase64(blob){
     r.readAsDataURL(blob);
   });
 }
+// Загрузка файла на бэкенд с ретраями и таймаутом. Railway усыпляет процесс в простое —
+// первый запрос после холодного старта может отвалиться по таймауту, поэтому повторяем.
+async function postUpload(blob, type){
+  const b64 = await blobToBase64(blob);
+  const body = JSON.stringify(type === "pdf" ? { image: b64, type: "pdf" } : { image: b64 });
+  let lastErr;
+  for(let attempt = 0; attempt < 3; attempt++){
+    try{
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 30000);
+      const res = await fetch(BACKEND_URL + "?action=upload", {
+        method: "POST", headers: { "content-type": "application/json" }, body, signal: ctrl.signal
+      }).finally(() => clearTimeout(to));
+      const j = await res.json();
+      if(j && j.url) return j.url;
+      lastErr = new Error((j && j.error) || "upload failed");
+    }catch(e){ lastErr = e; }
+    if(attempt < 2) await new Promise(r => setTimeout(r, 900 * (attempt + 1)));
+  }
+  throw lastErr || new Error("upload failed");
+}
 async function uploadCanvas(canvas){
   const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
   if(!blob) throw new Error("empty image");
-  const b64 = await blobToBase64(blob);
-  const res = await fetch(BACKEND_URL + "?action=upload", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ image: b64 })
-  });
-  const j = await res.json();
-  if(!j.url) throw new Error(j.error || "upload failed");
-  return j.url;
+  return postUpload(blob, "png");
 }
 
 // Отдельный вертикальный плакат 1080×1920 под Историю (карточка паспорта слишком высокая
 // и обрезается по центру). Акцент — тип носителя и редкость «1 из N».
 async function renderStoryCanvas(){
   const r = state.result;
+  const combo = r.combos && r.combos[0];
   const handle = "@" + DB.botUrl.split("/").filter(Boolean).pop();
+  // QR на тёмно-зелёной плашке → ссылка на бота прямо из скриншота истории (офлайн-генерация).
+  let qrSrc = "";
+  try{ if(window.QR) qrSrc = QR.toDataURL(DB.botUrl, 6, 2, "#0B1411", "#FFFFFF"); }catch(e){}
   const wrap = document.createElement("div");
   wrap.style.cssText = "position:fixed;left:-99999px;top:0;z-index:-1";
   wrap.innerHTML = `
@@ -387,14 +420,15 @@ async function renderStoryCanvas(){
       <div style="margin-top:22px;font-size:150px;font-weight:800;color:#E7C66B;line-height:1">1 из ${esc(r.oneIn.toLocaleString("ru-RU"))}</div>
       <div style="margin-top:14px;font-size:42px;color:#EAF3EE">★ ${esc(r.tier)}</div>
 
-      ${r.combo ? `
+      ${combo ? `
       <div style="margin-top:84px;font-size:30px;letter-spacing:4px;color:#7E8C84">ОБНАРУЖЕННАЯ СИНЕРГИЯ</div>
-      <div style="margin-top:18px;font-size:62px;font-weight:700;color:#A9D6BF;line-height:1.12">${esc(r.combo.emoji)} ${esc(r.combo.title)}</div>
-      <div style="margin-top:18px;font-size:31px;line-height:1.42;color:#9FB1A7;max-width:780px">${esc(r.combo.line)}</div>` : ""}
+      <div style="margin-top:18px;font-size:62px;font-weight:700;color:#A9D6BF;line-height:1.12">${esc(combo.emoji)} ${esc(combo.title)}</div>
+      <div style="margin-top:18px;font-size:31px;line-height:1.42;color:#9FB1A7;max-width:780px">${esc(combo.line)}</div>` : ""}
 
       <div style="flex:1"></div>
       <div style="font-size:42px;font-weight:700">Проверь свой биотип →</div>
-      <div style="margin-top:20px;font-size:36px;color:#E7C66B">${esc(handle)}</div>
+      ${qrSrc ? `<img src="${qrSrc}" width="260" height="260" style="margin-top:30px;border-radius:24px;background:#fff;padding:18px"/>` : ""}
+      <div style="margin-top:${qrSrc ? "22" : "20"}px;font-size:36px;color:#E7C66B">${esc(handle)}</div>
     </div>`;
   document.body.appendChild(wrap);
   try{
@@ -410,7 +444,8 @@ async function shareStory(){
   try{
     const canvas = await renderStoryCanvas();
     const url = await uploadCanvas(canvas);
-    tg.shareToStory(url, { text: `Мой биотип: «${r.typeName}» ${r.totem}${r.combo ? " · " + r.combo.emoji + " " + r.combo.title : ""} · редкость 1 из ${r.oneIn.toLocaleString("ru-RU")}` });
+    const combo = r.combos && r.combos[0];
+    tg.shareToStory(url, { text: `Мой биотип: «${r.typeName}» ${r.totem}${combo ? " · " + combo.emoji + " " + combo.title : ""} · редкость 1 из ${r.oneIn.toLocaleString("ru-RU")}` });
   }catch(e){ toast("Не вышло опубликовать историю — попробуй «Сохранить как фото»"); }
 }
 
@@ -457,16 +492,16 @@ async function savePNG(){
   if(!blob){ toast("Пустое изображение — сделай скриншот"); return; }
   const file = new File([blob], "biopassport.png", { type: "image/png" });
 
-  // 0) Telegram + бэкенд: надёжное сохранение через downloadFile (особенно Android, где <a download> не работает)
-  if(BACKEND_URL && tg && tg.downloadFile){
+  // 0) В Telegram: надёжное сохранение через бэкенд. downloadFile открывает диалог «Сохранить»
+  //    (особенно нужен на Android, где <a download> не работает); если метода нет — openLink
+  //    открывает картинку в браузере, где есть «Сохранить». На ошибку — честное сообщение, без ложного «Сохранён».
+  if(BACKEND_URL && tg && (tg.downloadFile || tg.openLink)){
     try{
-      const b64 = await blobToBase64(blob);
-      const res = await fetch(BACKEND_URL + "?action=upload", {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ image: b64 })
-      });
-      const j = await res.json();
-      if(j.url){ tg.downloadFile({ url: j.url, file_name: "biopassport.png" }); return; }
-    }catch(e){ /* падаем на старые способы ниже */ }
+      const url = await postUpload(blob, "png");
+      if(tg.downloadFile){ tg.downloadFile({ url, file_name: "biopassport.png" }); }
+      else { tg.openLink(url); toast("Открыл картинку в браузере — долгий тап → «Сохранить»"); }
+      return;
+    }catch(e){ toast("Не удалось отправить на сервер — попробуй ещё раз"); return; }
   }
 
   // 1) Нативный шэринг файла — лучший путь в Telegram и на мобильных
@@ -570,20 +605,11 @@ async function savePDF(){
     // tg.openLink (PDF откроется в браузере, где есть «Скачать»).
     if(BACKEND_URL && tg && (tg.downloadFile || tg.openLink)){
       try{
-        const b64 = await blobToBase64(blob);
-        const res = await fetch(BACKEND_URL + "?action=upload", {
-          method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ image: b64, type: "pdf" })
-        });
-        const j = await res.json();
-        if(j.url){
-          if(tg.downloadFile){ tg.downloadFile({ url: j.url, file_name: "biopassport.pdf" }); }
-          else { tg.openLink(j.url); toast("Открыл PDF в браузере — там кнопка «Скачать»"); }
-          return;
-        }
-        toast("PDF: сервер не принял файл");
+        const url = await postUpload(blob, "pdf");
+        if(tg.downloadFile){ tg.downloadFile({ url, file_name: "biopassport.pdf" }); }
+        else { tg.openLink(url); toast("Открыл PDF в браузере — там кнопка «Скачать»"); }
         return;
-      }catch(e){ toast("PDF: не удалось отправить на сервер"); return; }
+      }catch(e){ toast("PDF: не удалось отправить на сервер — попробуй ещё раз"); return; }
     }
 
     // Вне Telegram — системный шэринг файла (мобильные браузеры)
