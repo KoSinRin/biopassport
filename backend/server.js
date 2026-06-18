@@ -21,6 +21,7 @@ const server = http.createServer((req, res) => {
     const event = {
       httpMethod: req.method,
       queryStringParameters: Object.fromEntries(url.searchParams),
+      headers: req.headers, // нужно для проверки секрета вебхука Telegram
       body,
       isBase64Encoded: false,
     };

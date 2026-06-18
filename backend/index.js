@@ -22,7 +22,24 @@ const {
   S3_ENDPOINT = "https://storage.yandexcloud.net",
   S3_REGION = "ru-central1",
   PRICE_STARS = "20",
+  WEBHOOK_SECRET,                                          // секрет вебхука Telegram (если задан — проверяем заголовок)
+  WEBAPP_URL = "https://kosinrin.github.io/biopassport/",  // ссылка на мини-апп для кнопки в /start
 } = process.env;
+
+// Приветствие на /start (научпоп-голос). Кнопка ниже открывает мини-апп.
+const WELCOME_TEXT =
+  "🧬 Это твой Биопаспорт.\n\n" +
+  "Не медкарта — биологическая визитка. Ответь на 8 вопросов про свою внешность " +
+  "и узнай свой биологический класс, редкость комбинации «1 из N» и скрытые суперспособности.\n\n" +
+  "Жми кнопку ниже 👇";
+
+// Чтение заголовка без оглядки на регистр (Yandex/Node отдают по-разному).
+function headerVal(event, name) {
+  const h = (event && event.headers) || {};
+  name = name.toLowerCase();
+  for (const k in h) if (k.toLowerCase() === name) return h[k];
+  return undefined;
+}
 
 const S3_KEY = (S3_KEY_ID || "").trim();
 const S3_SEC = (S3_SECRET || "").trim();
@@ -122,9 +139,25 @@ exports.handler = async (event) => {
   }
 
   // ---- 3) Вебхук Telegram ----
+  // Если задан WEBHOOK_SECRET — пускаем только запросы Telegram с верным заголовком.
+  // (upload/invoice сюда не доходят — они обработаны выше по ?action, без секрета.)
+  if (WEBHOOK_SECRET && headerVal(event, "x-telegram-bot-api-secret-token") !== WEBHOOK_SECRET) {
+    console.warn("[webhook] отклонён: неверный секрет");
+    return json(403, { error: "forbidden" });
+  }
   try {
     const update = JSON.parse(rawBody);
     console.log("[webhook] keys=", Object.keys(update).join(","));
+    // /start → приветствие с кнопкой запуска мини-аппа
+    const msg = update.message;
+    const cmd = msg && typeof msg.text === "string" ? msg.text.trim().split(/\s+/)[0].split("@")[0] : "";
+    if (cmd === "/start") {
+      await tg("sendMessage", {
+        chat_id: msg.chat.id,
+        text: WELCOME_TEXT,
+        reply_markup: { inline_keyboard: [[{ text: "🧬 Открыть Биопаспорт", web_app: { url: WEBAPP_URL } }]] },
+      });
+    }
     if (update.pre_checkout_query) {
       // обязательно подтвердить в течение 10 секунд, иначе оплата отменится
       const ans = await tg("answerPreCheckoutQuery", { pre_checkout_query_id: update.pre_checkout_query.id, ok: true });
